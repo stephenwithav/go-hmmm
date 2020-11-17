@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -29,12 +28,8 @@ func (p Paper) ScienceWiseURL() string {
 	return fmt.Sprintf("http://sciencewise.info/bookmarks/%s/add", p.ArticleID)
 }
 
-func (p Paper) RedditURL() string {
-	return fmt.Sprint("https://reddit.com/submit?url=" + url.QueryEscape(fmt.Sprintf("https://arxiv.org/abs/"+p.ArticleID)))
-}
-
 // CountNewPapersFromArxiv returns a string representation of an int,
-// which specifies the number of new papers added in the past 7 days. 
+// which specifies the number of new papers added in the past 7 days.
 //
 // An error is returned for any errors that may occur along the way.
 // (e.g., http, parsing)
