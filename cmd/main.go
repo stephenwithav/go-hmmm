@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
+	"strings"
 	"time"
 
 	ui "github.com/gizak/termui/v3"
@@ -33,8 +33,15 @@ func paperTitles(papers []hmmm.Paper) []string {
 }
 
 func main() {
+	cfg, err := getConfig()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	if err := ui.Init(); err != nil {
-		log.Fatalf("failed to initialize termui: %v", err)
+		fmt.Printf("failed to initialize termui: %v\n", err)
+		os.Exit(2)
 	}
 	defer ui.Close()
 
@@ -44,22 +51,26 @@ func main() {
 	}
 	papers, err := retrieveSectionFromWeb(section)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("Error retrieving the latest articles from [%s]: %v\n", section, err)
+		os.Exit(3)
 	}
 
 	papersListFormat := "Papers from [%s] - [%d/%d]"
-	starsListFormat := "Papers from [%s] - [%d/%d]"
+	starsListFormat := "Starred Papers from [%s] - [%d/%d]"
+
+	inactiveStyle := ui.NewStyle(ui.ColorWhite)
+	activeStyle := ui.NewStyle(ui.ColorClear)
 
 	papersList := widgets.NewList()
 	papersList.WrapText = false
-	papersList.TextStyle = ui.NewStyle(ui.ColorWhite)
-	papersList.SelectedRowStyle = ui.NewStyle(ui.ColorBlue)
+	papersList.TextStyle = inactiveStyle
+	papersList.SelectedRowStyle = activeStyle
 	papersList.Rows = paperTitles(papers)
 	papersList.Title = fmt.Sprintf(papersListFormat, section, papersList.SelectedRow+1, len(papersList.Rows))
 
 	starsList := widgets.NewList()
 	starsList.WrapText = false
-	starsList.TextStyle = ui.NewStyle(ui.ColorWhite)
+	starsList.TextStyle = inactiveStyle
 	starsList.Rows = []string{}
 	starsList.Title = fmt.Sprintf(starsListFormat, section, 0, 0)
 
@@ -118,21 +129,21 @@ func main() {
 				starsList.Rows = starsList.Rows[1:]
 				rowsToExtract = rowsToExtract[1:]
 			} else {
-				rowsToExtract = append(rowsToExtract[0:starsList.SelectedRow], rowsToExtract[starsList.SelectedRow+1:]...)				
-				starsList.Rows = append(starsList.Rows[0:starsList.SelectedRow], starsList.Rows[starsList.SelectedRow+1:]...)				
+				rowsToExtract = append(rowsToExtract[0:starsList.SelectedRow], rowsToExtract[starsList.SelectedRow+1:]...)
+				starsList.Rows = append(starsList.Rows[0:starsList.SelectedRow], starsList.Rows[starsList.SelectedRow+1:]...)
 			}
 		case "<C-i>", "<Tab>":
 			if activeList == papersList {
-				papersList.SelectedRowStyle = ui.NewStyle(ui.ColorWhite)
-				starsList.SelectedRowStyle = ui.NewStyle(ui.ColorBlue)
+				papersList.SelectedRowStyle = inactiveStyle
+				starsList.SelectedRowStyle = activeStyle
 				activeList = starsList
 			} else {
-				starsList.SelectedRowStyle = ui.NewStyle(ui.ColorWhite)
-				papersList.SelectedRowStyle = ui.NewStyle(ui.ColorBlue)
+				starsList.SelectedRowStyle = inactiveStyle
+				papersList.SelectedRowStyle = activeStyle
 				activeList = papersList
 			}
 		case "<C-e>": // Extract
-			w, err:=os.Create(time.Now().Format("2006-01-02") + "-" + section + ".html")
+			w, err := os.Create(time.Now().Format("2006-01-02") + "-" + section + ".html")
 			if err != nil {
 				break
 			}
@@ -142,6 +153,30 @@ func main() {
 			}
 			fmt.Fprint(w, "\n</textarea></body></html>")
 			w.Close()
+		case "<C-t>":
+			client := createTwitterOathClient(cfg.GetString("ConsumerKey"), cfg.GetString("ConsumerSecret"), cfg.GetString("AccessToken"), cfg.GetString("AccessSecret"))
+			initialTweet, _, err := sendTweet(client, cfg.GetString("Intro"), 0)
+			if err != nil {
+				fmt.Printf("Unable to initialize thread: %#v\n", err)
+				os.Exit(4)
+			}
+
+			papersList.SelectedRowStyle = inactiveStyle
+			starsList.SelectedRowStyle = activeStyle
+			for i, row := range rowsToExtract {
+				starsList.SelectedRow = i
+				starsList.Title = fmt.Sprintf("Tweeting paper %d of %d", i+1, len(rowsToExtract))
+				ui.Render(grid)
+				time.Sleep(10 * time.Second)
+
+				body := cfg.GetString("Body")
+				body = strings.ReplaceAll(body, "%TITLE%", papers[row].Title)
+				body = strings.ReplaceAll(body, "%URL%", papers[row].ScienceWiseURL())
+				initialTweet, _, err = sendTweet(client, body, initialTweet.ID)
+				if err != nil {
+					fmt.Printf("Unable to add [%s] to thread. : %#v\n", papers[row].Title, err)
+				}
+			}
 		}
 
 		if previousKey == "g" {
@@ -151,7 +186,9 @@ func main() {
 		}
 
 		papersList.Title = fmt.Sprintf(papersListFormat, section, papersList.SelectedRow+1, len(papersList.Rows))
-		starsList.Title = fmt.Sprintf(starsListFormat, section, starsList.SelectedRow+1, len(starsList.Rows))
+		if len(starsList.Rows) > 0 {
+			starsList.Title = fmt.Sprintf(starsListFormat, section, starsList.SelectedRow+1, len(starsList.Rows))
+		}
 		ui.Render(grid)
 	}
 }
