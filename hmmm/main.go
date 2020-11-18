@@ -142,17 +142,6 @@ func main() {
 				papersList.SelectedRowStyle = activeStyle
 				activeList = papersList
 			}
-		case "<C-e>": // Extract
-			w, err := os.Create(time.Now().Format("2006-01-02") + "-" + section + ".html")
-			if err != nil {
-				break
-			}
-			fmt.Fprint(w, "<html><body><textarea>\n")
-			for _, row := range rowsToExtract {
-				fmt.Fprintf(w, "%s\n\n%s\n\n", papers[row], papers[row].ScienceWiseURL())
-			}
-			fmt.Fprint(w, "\n</textarea></body></html>")
-			w.Close()
 		case "<C-t>":
 			client := createTwitterOathClient(cfg.GetString("ConsumerKey"), cfg.GetString("ConsumerSecret"), cfg.GetString("AccessToken"), cfg.GetString("AccessSecret"))
 			initialTweet, _, err := sendTweet(client, cfg.GetString("Intro"), 0)
