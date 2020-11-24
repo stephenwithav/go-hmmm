@@ -11,15 +11,31 @@ import (
 	"github.com/stephenwithav/go-hmmm"
 )
 
-// retrieveSectionFromWeb ...
-func retrieveSectionFromWeb(s string) ([]hmmm.Paper, error) {
-	n, err := hmmm.CountNewPapersFromArxiv(s)
-	if err != nil {
-		return nil, err
-	}
-	papers, err := hmmm.GetPapersFromArxiv(n, s)
+// retrieveSectionsFromWeb ...
+func retrieveSectionsFromWeb(secs []string) ([]hmmm.Paper, error) {
+	var uniquePapers []hmmm.Paper
+	seenAlready := map[string]interface{}{}
+	for _, s := range secs {
+		n, err := hmmm.CountNewPapersFromArxiv(s)
+		if err != nil {
+			return nil, err
+		}
+		papers, err := hmmm.GetPapersFromArxiv(n, s)
+		if err != nil {
+			return nil, err
+		}
 
-	return papers, err
+		for _, paper := range papers {
+			if _, ok := seenAlready[paper.ArticleID]; ok {
+				continue
+			}
+
+			uniquePapers = append(uniquePapers, paper)
+			seenAlready[paper.ArticleID] = true
+		}
+	}
+
+	return uniquePapers, nil
 }
 
 // paperTitles ...
@@ -45,13 +61,13 @@ func main() {
 	}
 	defer ui.Close()
 
-	section := "cs.LG"
+	sections := []string{"cs.LG", "cs.AI"}
 	if len(os.Args) > 1 {
-		section = os.Args[1]
+		sections = os.Args[1:]
 	}
-	papers, err := retrieveSectionFromWeb(section)
+	papers, err := retrieveSectionsFromWeb(sections)
 	if err != nil {
-		fmt.Printf("Error retrieving the latest articles from [%s]: %v\n", section, err)
+		fmt.Printf("Error retrieving the latest articles from [%s]: %v\n", sections, err)
 		os.Exit(3)
 	}
 
@@ -59,20 +75,20 @@ func main() {
 	starsListFormat := "Starred Papers from [%s] - [%d/%d]"
 
 	inactiveStyle := ui.NewStyle(ui.ColorWhite)
-	activeStyle := ui.NewStyle(ui.ColorClear)
+	activeStyle := ui.NewStyle(ui.ColorCyan)
 
 	papersList := widgets.NewList()
 	papersList.WrapText = false
 	papersList.TextStyle = inactiveStyle
 	papersList.SelectedRowStyle = activeStyle
 	papersList.Rows = paperTitles(papers)
-	papersList.Title = fmt.Sprintf(papersListFormat, section, papersList.SelectedRow+1, len(papersList.Rows))
+	papersList.Title = fmt.Sprintf(papersListFormat, sections, papersList.SelectedRow+1, len(papersList.Rows))
 
 	starsList := widgets.NewList()
 	starsList.WrapText = false
 	starsList.TextStyle = inactiveStyle
 	starsList.Rows = []string{}
-	starsList.Title = fmt.Sprintf(starsListFormat, section, 0, 0)
+	starsList.Title = fmt.Sprintf(starsListFormat, sections, 0, 0)
 
 	rowsToExtract := []int{}
 
@@ -174,9 +190,9 @@ func main() {
 			previousKey = e.ID
 		}
 
-		papersList.Title = fmt.Sprintf(papersListFormat, section, papersList.SelectedRow+1, len(papersList.Rows))
+		papersList.Title = fmt.Sprintf(papersListFormat, sections, papersList.SelectedRow+1, len(papersList.Rows))
 		if len(starsList.Rows) > 0 {
-			starsList.Title = fmt.Sprintf(starsListFormat, section, starsList.SelectedRow+1, len(starsList.Rows))
+			starsList.Title = fmt.Sprintf(starsListFormat, sections, starsList.SelectedRow+1, len(starsList.Rows))
 		}
 		ui.Render(grid)
 	}

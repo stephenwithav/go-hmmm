@@ -20,7 +20,9 @@ func getConfig() (*viper.Viper, error) {
 	}
 
 	cfg.AutomaticEnv()
-	cfg.ReadInConfig()
+	if err := cfg.ReadInConfig(); err != nil {
+		fmt.Printf("Unable to read config file, %v.", err)
+	}
 
 	for _, key := range keys {
 		if cfg.Get(key) == nil {
