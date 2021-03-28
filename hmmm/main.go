@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -10,6 +11,21 @@ import (
 	"github.com/gizak/termui/v3/widgets"
 	"github.com/stephenwithav/go-hmmm"
 )
+
+// filterOutSeenPapers ...
+func filterOutSeenPapers(seenURLs map[string]interface{}, potentialPapers []hmmm.Paper) []hmmm.Paper {
+	var uniquePapers []hmmm.Paper
+	for _, paper := range potentialPapers {
+		if _, ok := seenURLs[paper.ArticleID]; ok {
+			continue
+		}
+
+		uniquePapers = append(uniquePapers, paper)
+		seenURLs[paper.ArticleID] = true
+	}
+
+	return uniquePapers
+}
 
 // retrieveSectionsFromWeb ...
 func retrieveSectionsFromWeb(secs []string) ([]hmmm.Paper, error) {
@@ -25,14 +41,9 @@ func retrieveSectionsFromWeb(secs []string) ([]hmmm.Paper, error) {
 			return nil, err
 		}
 
-		for _, paper := range papers {
-			if _, ok := seenAlready[paper.ArticleID]; ok {
-				continue
-			}
-
-			uniquePapers = append(uniquePapers, paper)
-			seenAlready[paper.ArticleID] = true
-		}
+		newPapers := filterOutSeenPapers(seenAlready, papers)
+		uniquePapers = append(uniquePapers, hmmm.Paper{Title: fmt.Sprintf("-- %s [%d; %d are already listed above] ------------", s, len(newPapers), len(papers)-len(newPapers))})
+		uniquePapers = append(uniquePapers, newPapers...)
 	}
 
 	return uniquePapers, nil
@@ -61,7 +72,7 @@ func main() {
 	}
 	defer ui.Close()
 
-	sections := []string{"cs.LG", "cs.AI"}
+	sections := []string{"q-fin", "cs.AI", "cs.LG", "cs.CV"}
 	if len(os.Args) > 1 {
 		sections = os.Args[1:]
 	}
@@ -71,11 +82,11 @@ func main() {
 		os.Exit(3)
 	}
 
-	papersListFormat := "Papers from [%s] - [%d/%d]"
-	starsListFormat := "Starred Papers from [%s] - [%d/%d]"
+	papersListFormat := "Papers from %s - [%d/%d]"
+	starsListFormat := "Starred Papers from %s - [%d/%d]"
 
 	inactiveStyle := ui.NewStyle(ui.ColorWhite)
-	activeStyle := ui.NewStyle(ui.ColorCyan)
+	activeStyle := ui.NewStyle(ui.ColorYellow)
 
 	papersList := widgets.NewList()
 	papersList.WrapText = false
@@ -90,18 +101,24 @@ func main() {
 	starsList.Rows = []string{}
 	starsList.Title = fmt.Sprintf(starsListFormat, sections, 0, 0)
 
+	abstractView := widgets.NewParagraph()
+	abstractView.WrapText = true
+	abstractView.TextStyle = inactiveStyle
+
 	rowsToExtract := []int{}
 
-	grid := ui.NewGrid()
+	starsGrid := ui.NewGrid()
 	termWidth, termHeight := ui.TerminalDimensions()
-	grid.SetRect(0, 0, termWidth, termHeight)
+	starsGrid.SetRect(0, 0, termWidth, termHeight)
 
-	grid.Set(
+	starsGrid.Set(
 		ui.NewRow(0.75, papersList),
 		ui.NewRow(0.25, starsList),
 	)
 
-	ui.Render(grid)
+	activeGrid := starsGrid
+
+	ui.Render(activeGrid)
 
 	previousKey := ""
 	uiEvents := ui.PollEvents()
@@ -171,7 +188,7 @@ func main() {
 			for i, row := range rowsToExtract {
 				starsList.SelectedRow = i
 				starsList.Title = fmt.Sprintf("Tweeting paper %d of %d", i+1, len(rowsToExtract))
-				ui.Render(grid)
+				ui.Render(activeGrid)
 				time.Sleep(10 * time.Second)
 
 				body := cfg.GetString("Body")
@@ -181,6 +198,29 @@ func main() {
 				if err != nil {
 					fmt.Printf("Unable to add [%s] to thread. : %#v\n", papers[row].Title, err)
 				}
+
+				if (i+2)%200 == 0 {
+					time.Sleep(3 * time.Hour)
+				}
+			}
+
+			_, _, err = sendTweet(client, "@threadreaderapp unroll", initialTweet.ID)
+		case "p":
+			if activeList == papersList {
+				list := starsList.Rows
+
+				abstract, err := hmmm.GetAbstractFromPaper(papers[papersList.SelectedRow])
+				if err != nil {
+					log.Fatal(err)
+				}
+				starsList.Rows = []string{abstract}
+				starsList.WrapText = true
+				ui.Render(activeGrid)
+
+				e = <-uiEvents
+
+				starsList.Rows = list
+				starsList.WrapText = false
 			}
 		}
 
@@ -194,6 +234,6 @@ func main() {
 		if len(starsList.Rows) > 0 {
 			starsList.Title = fmt.Sprintf(starsListFormat, sections, starsList.SelectedRow+1, len(starsList.Rows))
 		}
-		ui.Render(grid)
+		ui.Render(activeGrid)
 	}
 }

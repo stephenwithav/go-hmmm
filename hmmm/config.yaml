@@ -1,10 +1,1 @@
-ConsumerKey: 
-ConsumerSecret: 
-AccessToken: 
-AccessSecret: 
-Intro: |
-  This is a sample thread intro.  This will be the lede tweet in a thread.
-
-  Yes, it CAN span multiple lines.
-Body: |
-  The body can contain %TITLE% and %URL% placeholders, as appropriate.
+/home/steven/.hmmm/config.yaml

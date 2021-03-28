@@ -50,7 +50,10 @@ func CountNewPapersFromArxiv(section string) (string, error) {
 	}
 
 	aLastChild := doc.Find("#dlpage > small > a:last-child").First()
-	return strings.Split(aLastChild.Text(), "-")[1], nil // 1-N, return N.
+	if strings.Contains(aLastChild.Text(), "-") {
+		return strings.Split(aLastChild.Text(), "-")[1], nil // 1-N, return N.
+	}
+	return aLastChild.Text(), nil
 }
 
 // GetPapersFromReader returns a slice of new Paprs from the given
@@ -100,4 +103,48 @@ func GetPapersFromArxiv(n, section string) ([]Paper, error) {
 	}
 
 	return GetPapersFromReader(res.Body)
+}
+
+// GetPapersFromArxiv returns a slice of Papers, along with any error
+// that may occur while retrieving the Paper metadata
+func GetPapersFromArxivInChronologicalOrder(n, section string) ([]Paper, error) {
+	// Request the HTML page.
+	papers, err := GetPapersFromArxiv(n, section)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, _ := range papers[0 : len(papers)/2] {
+		papers[i], papers[len(papers)-i-1] = papers[len(papers)-i-1], papers[i]
+	}
+
+	return papers, nil
+}
+
+// GetAbstractFromPaper ...
+func GetAbstractFromPaper(p Paper) (string, error) {
+	req, err := http.NewRequest("GET", p.ArxivURL(), nil)
+	// Previewing unlimited abstracts requires spoofing a UA.
+	// http.Get suffices for the other calls, or this would be in a
+	// helper func.
+	req.Header.Add("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.192 Safari/537.36 OPR/74.0.3911.218")
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return "", fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if res.StatusCode != 200 {
+		return "", fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	bq := strings.SplitN(doc.Find("blockquote").Text(), "Abstract:  ", 2)
+
+	return bq[1], nil
 }
